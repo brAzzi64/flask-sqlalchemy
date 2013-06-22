@@ -100,11 +100,15 @@ class _DebugQueryTuple(tuple):
     parameters = property(itemgetter(1))
     start_time = property(itemgetter(2))
     end_time = property(itemgetter(3))
-    context = property(itemgetter(4))
+    stacktrace = property(itemgetter(4))
 
     @property
     def duration(self):
         return self.end_time - self.start_time
+
+    @property
+    def context(self):
+        return self.stacktrace[0] if self.stacktrace else None
 
     def __repr__(self):
         return '<query statement="%s" parameters=%r duration=%.03f>' % (
@@ -114,19 +118,17 @@ class _DebugQueryTuple(tuple):
         )
 
 
-def _calling_context(app_path):
+def _calling_stack(app_path):
     frm = sys._getframe(1)
+    stack = []
     while frm.f_back is not None:
         name = frm.f_globals.get('__name__')
-        if name and (name == app_path or name.startswith(app_path + '.')):
+        if stack or name and (name == app_path or name.startswith(app_path + '.')):
             funcname = frm.f_code.co_name
-            return '%s:%s (%s)' % (
-                frm.f_code.co_filename,
-                frm.f_lineno,
-                funcname
-            )
+            stack.append('%s:%s (%s)' % (frm.f_code.co_filename, frm.f_lineno, funcname))
         frm = frm.f_back
-    return '<unknown>'
+    stack.append('<unknown>')
+    return stack
 
 
 class _SignallingSession(Session):
@@ -225,7 +227,7 @@ class _EngineDebuggingSignalEvents(object):
                 setattr(ctx, 'sqlalchemy_queries', queries)
             queries.append( _DebugQueryTuple( (
                 statement, parameters, context._query_start_time, _timer(),
-                _calling_context(self.app_package) ) ) )
+                _calling_stack(self.app_package) ) ) )
 
 
 def get_debug_queries():
